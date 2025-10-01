@@ -8,10 +8,12 @@ export function useSupabaseSync() {
   const queryClient = useQueryClient();
   
   // Materials sync
-  const { data: materials, isLoading: materialsLoading } = useQuery({
+  const { data: materials, isLoading: materialsLoading, error: materialsError } = useQuery({
     queryKey: ['materials'],
     queryFn: MaterialsService.getAll,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 1,
+    retryDelay: 1000,
   });
 
   const { setMaterials } = useMaterialsStore();
@@ -30,10 +32,12 @@ export function useSupabaseSync() {
   }, [materials, setMaterials]);
 
   // Stock rolls sync
-  const { data: stockRolls, isLoading: stockLoading } = useQuery({
+  const { data: stockRolls, isLoading: stockLoading, error: stockError } = useQuery({
     queryKey: ['stockRolls'],
     queryFn: StockService.getAll,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
+    retryDelay: 1000,
   });
 
   const { setStockRolls } = useStockStore();
@@ -56,10 +60,12 @@ export function useSupabaseSync() {
   }, [stockRolls, setStockRolls]);
 
   // Requests sync
-  const { data: cutRequests, isLoading: requestsLoading } = useQuery({
+  const { data: cutRequests, isLoading: requestsLoading, error: requestsError } = useQuery({
     queryKey: ['cutRequests'],
     queryFn: RequestsService.getAll,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
+    retryDelay: 1000,
   });
 
   const { setCutRequests } = useRequestsStore();
@@ -80,8 +86,22 @@ export function useSupabaseSync() {
     }
   }, [cutRequests, setCutRequests]);
 
+  // Log errors for debugging
+  useEffect(() => {
+    if (materialsError) {
+      console.error('Materials sync error:', materialsError);
+    }
+    if (stockError) {
+      console.error('Stock sync error:', stockError);
+    }
+    if (requestsError) {
+      console.error('Requests sync error:', requestsError);
+    }
+  }, [materialsError, stockError, requestsError]);
+
   return {
-    isLoading: materialsLoading || stockLoading || requestsLoading
+    isLoading: materialsLoading || stockLoading || requestsLoading,
+    error: materialsError || stockError || requestsError
   };
 }
 

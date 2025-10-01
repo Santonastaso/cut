@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  base: "/cut/",
   plugins: [react()],
   server: {
     port: 5173,
@@ -19,6 +20,10 @@ export default defineConfig({
         assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     }
+  },
+  define: {
+    // Ensure environment variables are properly defined
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production')
   }
 })
 
