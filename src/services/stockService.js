@@ -135,3 +135,4 @@ export class StockService {
     if (error) throw error;
   }
 }
+

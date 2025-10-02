@@ -252,3 +252,4 @@ CREATE INDEX IF NOT EXISTS idx_request_allocations_user_id ON public.request_all
 
 -- Success message
 SELECT 'OptiCUT Pro authentication setup completed successfully!' as message;
+

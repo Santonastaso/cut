@@ -163,3 +163,4 @@ export class RequestsService {
     return data.reduce((total, request) => total + request.quantity, 0);
   }
 }
+

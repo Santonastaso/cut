@@ -169,3 +169,4 @@ Shows optimization results with pattern statistics:
 5. **Run optimizations** and verify results are saved to the database
 
 The application will now persist all data to Supabase instead of using local state only!
+
