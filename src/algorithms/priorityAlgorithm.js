@@ -1,14 +1,15 @@
-import { BaseAlgorithm } from './baseAlgorithm';
+import { BaseAlgorithm } from './baseAlgorithm.js';
 
 /**
- * PERFECT Priority-based algorithm that prioritizes high-priority orders
- * Uses weighted scoring system and advanced priority handling
+ * Priority Orders Algorithm
+ * Prioritizes high priority requests even at cost of more waste
+ * Based on client's HTML MVP implementation
  */
 export class PriorityAlgorithm extends BaseAlgorithm {
   constructor() {
     super(
-      'Priority',
-      'Priorità Ordini (ILP)'
+      'PriorityAlgorithm',
+      'Priorità Ordini'
     );
   }
 
@@ -28,18 +29,35 @@ export class PriorityAlgorithm extends BaseAlgorithm {
       };
     }
 
+    // Default settings
+    const defaultSettings = {
+      priorityWeights: {
+        high: 10,
+        normal: 5,
+        low: 1
+      },
+      strictMode: true
+    };
+
+    const algorithmSettings = { ...defaultSettings, ...settings };
+
+    // Group requests by material type
     const requestsByMaterial = this.groupRequestsByMaterial(cutRequests);
     const cuttingPlans = [];
     let totalWaste = 0;
     let totalEfficiency = 0;
     let usedRolls = 0;
     let totalFulfilledRequests = 0;
+    
+    // Calculate total requests before processing (quantities will be modified)
+    const totalRequests = cutRequests.reduce((sum, req) => sum + req.quantity, 0);
 
+    // Process each material type separately
     Object.entries(requestsByMaterial).forEach(([material, materialRequests]) => {
       const availableRolls = stockRolls.filter(roll => roll.material === material);
       if (!availableRolls.length) return;
 
-      const materialResult = this.optimizeMaterial(availableRolls, materialRequests, settings);
+      const materialResult = this.optimizeMaterial(availableRolls, materialRequests, algorithmSettings);
       
       if (materialResult.patterns.length > 0) {
         cuttingPlans.push(materialResult);
@@ -56,195 +74,195 @@ export class PriorityAlgorithm extends BaseAlgorithm {
       cuttingPlans,
       statistics: {
         efficiency: planEfficiency.toFixed(2),
-        totalWaste: totalWaste.toFixed(2),
+        totalWaste: (totalWaste / 1000000).toFixed(2), // Convert mm² to m²
         rollsUsed: usedRolls,
         totalRolls: stockRolls.length,
         fulfilledRequests: totalFulfilledRequests,
-        totalRequests: cutRequests.reduce((sum, req) => sum + req.quantity, 0)
+        totalRequests: totalRequests
       }
     };
   }
 
-  optimizeMaterial(availableRolls, materialRequests, settings = {}) {
-    // Expand requests with quantities
-    const expandedRequests = this.expandRequests(materialRequests);
-    
-    // Priority weights (higher number = higher priority)
-    const priorityWeights = {
-      '4': 100, // Urgent
-      '3': 80,  // High
-      '2': 50,  // Medium
-      '1': 20   // Low
-    };
-
-    // Calculate priority scores for each request
-    const scoredRequests = expandedRequests.map(request => ({
-      ...request,
-      priorityScore: this.calculatePriorityScore(request, priorityWeights, settings)
-    }));
-
-    // Sort by priority score (highest first), then by area
-    const sortedRequests = scoredRequests.sort((a, b) => {
-      if (a.priorityScore !== b.priorityScore) {
-        return b.priorityScore - a.priorityScore;
+  optimizeMaterial(availableRolls, materialRequests, settings) {
+    // Sort requests by priority and width
+    const sortedRequests = [...materialRequests].sort((a, b) => {
+      const priorityA = settings.priorityWeights[a.priority] || 1;
+      const priorityB = settings.priorityWeights[b.priority] || 1;
+      
+      if (priorityA !== priorityB) {
+        return priorityB - priorityA; // Higher priority first
       }
-      return (b.width * b.length) - (a.width * a.length);
+      return b.width - a.width; // Larger width first
     });
-
-    // Sort rolls by efficiency (larger rolls first for high-priority items)
-    const sortedRolls = [...availableRolls].sort((a, b) => (b.width * b.length) - (a.width * a.length));
+    
+    // Sort rolls by width (descending) to use larger rolls first
+    const sortedRolls = [...availableRolls].sort((a, b) => b.width - a.width);
     
     const patterns = [];
-    const remainingRequests = [...sortedRequests];
+    let totalFulfilledRequests = 0;
 
+    // Process each roll
     for (const roll of sortedRolls) {
-      if (remainingRequests.length === 0) break;
+      // Check if there are any remaining requests
+      const hasRemainingRequests = sortedRequests.some(req => req.quantity > 0);
+      if (!hasRemainingRequests) break;
 
-      const pattern = this.createPriorityPattern(roll, remainingRequests, settings);
+      // Create pattern for this roll
+      const pattern = this.createCuttingPattern(roll, sortedRequests, settings);
       
       if (pattern.cuts.length > 0) {
-        // Remove fulfilled requests
-        const fulfilledRequestIds = pattern.cuts.map(cut => cut.request.id);
-        for (let i = remainingRequests.length - 1; i >= 0; i--) {
-          if (fulfilledRequestIds.includes(remainingRequests[i].id)) {
-            remainingRequests.splice(i, 1);
-          }
-        }
-        
         patterns.push(pattern);
+        totalFulfilledRequests += pattern.cuts.length;
       }
     }
 
     const totalWaste = patterns.reduce((sum, pattern) => sum + pattern.waste, 0);
-    const totalArea = patterns.reduce((sum, pattern) => sum + (pattern.roll.width * pattern.roll.length), 0);
+    const totalArea = patterns.reduce((sum, pattern) => sum + (pattern.roll.width * pattern.roll.length * 1000), 0); // Convert m to mm
     const usedArea = patterns.reduce((sum, pattern) => sum + pattern.usedArea, 0);
     const efficiency = totalArea > 0 ? (usedArea / totalArea) * 100 : 0;
-
-    // Calculate priority fulfillment statistics
-    const priorityStats = this.calculatePriorityStats(patterns, materialRequests);
 
     return {
       material: availableRolls[0].material,
       patterns,
       statistics: {
         efficiency: efficiency.toFixed(2),
-        totalWaste: totalWaste.toFixed(2),
-        fulfilledRequests: materialRequests.reduce((sum, req) => sum + req.quantity, 0) - remainingRequests.length,
-        priorityStats
+        totalWaste: (totalWaste / 1000000).toFixed(2), // Convert mm² to m²
+        fulfilledRequests: totalFulfilledRequests
       }
     };
   }
 
-  calculatePriorityScore(request, priorityWeights, settings) {
-    const baseScore = priorityWeights[request.priority] || 0;
-    
-    // Bonus for larger orders (more important to fulfill)
-    const sizeBonus = (request.width * request.length) / 1000;
-    
-    // Bonus for orders that are close to deadline (if deadline exists)
-    const deadlineBonus = request.deadline ? this.calculateDeadlineBonus(request.deadline) : 0;
-    
-    // Penalty for very small orders (less important)
-    const sizePenalty = (request.width * request.length) < 100 ? -10 : 0;
-    
-    return baseScore + sizeBonus + deadlineBonus + sizePenalty;
-  }
-
-  calculateDeadlineBonus(deadline) {
-    const now = new Date();
-    const deadlineDate = new Date(deadline);
-    const daysUntilDeadline = (deadlineDate - now) / (1000 * 60 * 60 * 24);
-    
-    if (daysUntilDeadline < 0) return 50; // Overdue
-    if (daysUntilDeadline < 1) return 30; // Due today
-    if (daysUntilDeadline < 3) return 20; // Due in 3 days
-    if (daysUntilDeadline < 7) return 10; // Due in a week
-    return 0; // Not urgent
-  }
-
-  createPriorityPattern(roll, availableRequests, settings) {
+  /**
+   * Create cutting pattern prioritizing high priority requests
+   * Based on client's HTML MVP implementation
+   */
+  createCuttingPattern(roll, availableRequests, settings) {
     const pattern = {
-      roll,
+      roll: roll,
       cuts: [],
       waste: 0,
-      efficiency: 0,
       usedArea: 0,
-      priorityScore: 0
+      efficiency: 0,
+      remainingPieces: []
     };
 
-    let remainingWidth = roll.width;
-    const placedCuts = [];
+    // Sort all requests by priority and width
+    const sortedRequests = [...availableRequests].sort((a, b) => {
+      const priorityA = settings.priorityWeights[a.priority] || 1;
+      const priorityB = settings.priorityWeights[b.priority] || 1;
+      
+      if (priorityA !== priorityB) {
+        return priorityB - priorityA; // Higher priority first
+      }
+      return b.width - a.width; // Larger width first
+    });
 
-    // First pass: try to place highest priority items
-    for (const request of availableRequests) {
-      if (request.width <= remainingWidth) {
-        const cut = {
-          request: request,
-          width: request.width,
-          length: request.length
-        };
-        
-        pattern.cuts.push(cut);
-        placedCuts.push(cut);
-        remainingWidth -= request.width;
-        pattern.priorityScore += request.priorityScore;
-        
-        // If we've filled the roll, stop
-        if (remainingWidth <= 0) break;
+    let remainingWidth = roll.width;
+    let maxLength = 0;
+    
+    // Process requests in priority order
+    let requestIndex = 0;
+    while (requestIndex < sortedRequests.length && remainingWidth > 0) {
+      const request = sortedRequests[requestIndex];
+      
+      if (request.quantity <= 0 || remainingWidth < request.width) {
+        requestIndex++;
+        continue;
+      }
+      
+      // Add this request to the pattern
+      pattern.cuts.push({
+        request: request,
+        width: request.width,
+        length: request.length,
+        position: {
+          x: roll.width - remainingWidth,
+          y: 0
+        }
+      });
+      
+      remainingWidth -= request.width;
+      maxLength = Math.max(maxLength, request.length);
+      
+      // Reduce quantity
+      request.quantity--;
+      
+      // If quantity becomes 0, remove from available requests
+      if (request.quantity === 0) {
+        sortedRequests.splice(requestIndex, 1);
+        // Don't increment requestIndex since we removed an element
+      } else {
+        // Don't increment requestIndex - continue with same request if it has more quantity
+        // This ensures we process all quantities of the same request
+      }
+      
+      // In strict mode, only process high priority requests first
+      if (settings.strictMode && request.priority !== 'high' && sortedRequests.some(req => req.priority === 'high' && req.quantity > 0)) {
+        break;
       }
     }
 
-    // Calculate pattern metrics
-    pattern.usedArea = pattern.cuts.reduce((sum, cut) => sum + (cut.width * cut.length), 0);
-    pattern.waste = (roll.width * roll.length) - pattern.usedArea;
-    pattern.efficiency = (pattern.usedArea / (roll.width * roll.length)) * 100;
+    if (pattern.cuts.length === 0) {
+      return pattern; // No cuts possible
+    }
+
+    // Calculate waste based on actual cuts made
+    const usedWidth = roll.width - remainingWidth;
+    
+    // Define minimum useful piece size
+    const minUsefulWidth = 50; // mm
+    const minUsefulLength = 500; // mm (0.5m)
+    
+    let actualWaste = 0;
+    
+    // Check width waste
+    if (remainingWidth > 0) {
+      if (remainingWidth < minUsefulWidth) {
+        actualWaste += remainingWidth * maxLength * 1000; // Convert m to mm
+        pattern.remainingPieces.push({
+          type: 'width_waste',
+          width: remainingWidth,
+          length: maxLength,
+          description: `Sfrido larghezza: ${remainingWidth}mm × ${maxLength}m (troppo piccolo)`
+        });
+      } else {
+        pattern.remainingPieces.push({
+          type: 'remaining_stock',
+          width: remainingWidth,
+          length: maxLength,
+          description: `Rettangolo G: larga ${remainingWidth}mm, lunga ${maxLength}m (ritorna a magazzino)`
+        });
+      }
+    }
+
+    // Check length waste
+    const remainingLength = roll.length - maxLength;
+    if (remainingLength > 0) {
+      if (remainingLength * 1000 < minUsefulLength) { // Convert m to mm
+        actualWaste += remainingLength * roll.width * 1000; // Convert m to mm
+        pattern.remainingPieces.push({
+          type: 'length_waste', 
+          width: roll.width,
+          length: remainingLength,
+          description: `Sfrido lunghezza: ${roll.width}mm × ${remainingLength}m (troppo piccolo)`
+        });
+      } else {
+        pattern.remainingPieces.push({
+          type: 'remaining_stock',
+          width: roll.width,
+          length: remainingLength,
+          description: `Rettangolo Z: larga ${roll.width}mm, lunga ${remainingLength}m (ritorna a magazzino)`
+        });
+      }
+    }
+
+    pattern.waste = actualWaste;
+
+    // Calculate used area and efficiency
+    pattern.usedArea = pattern.cuts.reduce((sum, cut) => sum + (cut.width * cut.length * 1000), 0);
+    const totalArea = roll.width * roll.length * 1000; // Convert m to mm
+    pattern.efficiency = totalArea > 0 ? (pattern.usedArea / totalArea) * 100 : 0;
 
     return pattern;
   }
-
-  calculatePriorityStats(patterns, originalRequests) {
-    const stats = {
-      urgent: { total: 0, fulfilled: 0 },
-      high: { total: 0, fulfilled: 0 },
-      medium: { total: 0, fulfilled: 0 },
-      low: { total: 0, fulfilled: 0 }
-    };
-
-    // Count total requests by priority
-    originalRequests.forEach(request => {
-      const priority = this.getPriorityLevel(request.priority);
-      stats[priority].total += request.quantity;
-    });
-
-    // Count fulfilled requests by priority
-    const fulfilledRequestIds = new Set();
-    patterns.forEach(pattern => {
-      pattern.cuts.forEach(cut => {
-        fulfilledRequestIds.add(cut.request.id);
-      });
-    });
-
-    originalRequests.forEach(request => {
-      const priority = this.getPriorityLevel(request.priority);
-      for (let i = 0; i < request.quantity; i++) {
-        const requestId = `${request.id}-${i}`;
-        if (fulfilledRequestIds.has(requestId)) {
-          stats[priority].fulfilled++;
-        }
-      }
-    });
-
-    return stats;
-  }
-
-  getPriorityLevel(priority) {
-    const priorityMap = {
-      '4': 'urgent',
-      '3': 'high',
-      '2': 'medium',
-      '1': 'low'
-    };
-    return priorityMap[priority] || 'low';
-  }
 }
-

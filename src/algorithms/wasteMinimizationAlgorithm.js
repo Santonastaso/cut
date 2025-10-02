@@ -1,14 +1,15 @@
-import { BaseAlgorithm } from './baseAlgorithm';
+import { BaseAlgorithm } from './baseAlgorithm.js';
 
 /**
- * PERFECT Waste minimization algorithm using advanced bin packing
- * Implements First Fit Decreasing (FFD) and Best Fit Decreasing (BFD) algorithms
+ * Simple Waste Optimization Algorithm
+ * Matches stock rectangles with requests and creates cutting patterns
+ * Based on client requirements: optimize waste by pairing rectangles
  */
 export class WasteMinimizationAlgorithm extends BaseAlgorithm {
   constructor() {
     super(
       'WasteMinimization',
-      'Minimizzazione Sfrido (ILP)'
+      'Ottimizzazione Sfridi'
     );
   }
 
@@ -28,18 +29,23 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
       };
     }
 
+    // Group requests by material type
     const requestsByMaterial = this.groupRequestsByMaterial(cutRequests);
     const cuttingPlans = [];
     let totalWaste = 0;
     let totalEfficiency = 0;
     let usedRolls = 0;
     let totalFulfilledRequests = 0;
+    
+    // Calculate total requests before processing (quantities will be modified)
+    const totalRequests = cutRequests.reduce((sum, req) => sum + req.quantity, 0);
 
+    // Process each material type separately
     Object.entries(requestsByMaterial).forEach(([material, materialRequests]) => {
       const availableRolls = stockRolls.filter(roll => roll.material === material);
       if (!availableRolls.length) return;
 
-      const materialResult = this.optimizeMaterial(availableRolls, materialRequests, settings);
+      const materialResult = this.optimizeMaterial(availableRolls, materialRequests);
       
       if (materialResult.patterns.length > 0) {
         cuttingPlans.push(materialResult);
@@ -60,169 +66,497 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
         rollsUsed: usedRolls,
         totalRolls: stockRolls.length,
         fulfilledRequests: totalFulfilledRequests,
-        totalRequests: cutRequests.reduce((sum, req) => sum + req.quantity, 0)
+        totalRequests: totalRequests
       }
     };
   }
 
-  optimizeMaterial(availableRolls, materialRequests, settings = {}) {
-    // Expand requests with quantities
-    const expandedRequests = this.expandRequests(materialRequests);
+  optimizeMaterial(availableRolls, materialRequests) {
+    // Sort requests by priority and width (descending)
+    const sortedRequests = this.sortRequestsByPriority([...materialRequests]);
     
-    // Use the best algorithm based on problem size
-    const algorithm = settings.algorithm || 'hybrid';
+    // Sort rolls by width (descending) to use larger rolls first
+    const sortedRolls = this.sortRollsByWidth([...availableRolls]);
     
-    let patterns;
-    switch (algorithm) {
-      case 'ffd':
-        patterns = this.firstFitDecreasing(availableRolls, expandedRequests);
-        break;
-      case 'bfd':
-        patterns = this.bestFitDecreasing(availableRolls, expandedRequests);
-        break;
-      case 'hybrid':
-      default:
-        // Use hybrid approach: try both and pick the best
-        const ffdResult = this.firstFitDecreasing(availableRolls, expandedRequests);
-        const bfdResult = this.bestFitDecreasing(availableRolls, expandedRequests);
-        
-        const ffdWaste = ffdResult.reduce((sum, p) => sum + p.waste, 0);
-        const bfdWaste = bfdResult.reduce((sum, p) => sum + p.waste, 0);
-        
-        patterns = ffdWaste <= bfdWaste ? ffdResult : bfdResult;
-        break;
+    const patterns = [];
+    let totalFulfilledRequests = 0;
+    let unfulfilledRequests = [];
+
+    // Process each roll following the algorithm sketch
+    for (const roll of sortedRolls) {
+      // Check if there are any remaining requests
+      const hasRemainingRequests = sortedRequests.some(req => req.quantity > 0);
+      if (!hasRemainingRequests) break;
+
+      console.log(`Processing roll ${roll.code}: ${roll.width}mm × ${roll.length}m`);
+      console.log('Remaining requests:', sortedRequests.filter(req => req.quantity > 0));
+
+      // Create pattern for this roll
+      const pattern = this.createCuttingPattern(roll, sortedRequests);
+      
+      console.log(`Pattern for roll ${roll.code}: ${pattern.cuts.length} cuts, ${pattern.multiRollCuts.length} multi-roll cuts`);
+      
+      // Only add patterns with actual cuts to results
+      if (pattern.cuts.length > 0) {
+        patterns.push(pattern);
+        totalFulfilledRequests += pattern.cuts.length;
+      }
+      
+      // Handle multi-roll cuts by trying to fulfill them with remaining rolls
+      if (pattern.multiRollCuts.length > 0) {
+        this.handleMultiRollOptimization(pattern, sortedRolls, sortedRequests);
+      }
     }
 
+    // After processing all rolls, try to fulfill remaining requests with length collage
+    this.attemptLengthCollageForRemainingRequests(sortedRequests, sortedRolls, patterns);
+
+    // Collect unfulfilled requests
+    unfulfilledRequests = sortedRequests.filter(req => req.quantity > 0);
+
     const totalWaste = patterns.reduce((sum, pattern) => sum + pattern.waste, 0);
-    const totalArea = patterns.reduce((sum, pattern) => sum + (pattern.roll.width * pattern.roll.length), 0);
+    const totalArea = patterns.reduce((sum, pattern) => sum + (pattern.roll.width * pattern.roll.length * 1000), 0);
     const usedArea = patterns.reduce((sum, pattern) => sum + pattern.usedArea, 0);
     const efficiency = totalArea > 0 ? (usedArea / totalArea) * 100 : 0;
 
     return {
       material: availableRolls[0].material,
       patterns,
+      unfulfilledRequests,
       statistics: {
         efficiency: efficiency.toFixed(2),
-        totalWaste: totalWaste.toFixed(2),
-        fulfilledRequests: materialRequests.reduce((sum, req) => sum + req.quantity, 0) - this.countUnfulfilledRequests(patterns, expandedRequests)
+        totalWaste: (totalWaste / 1000000).toFixed(2), // Convert mm² to m²
+        fulfilledRequests: totalFulfilledRequests,
+        unfulfilledRequests: unfulfilledRequests.length
       }
     };
   }
 
-  firstFitDecreasing(availableRolls, requests) {
-    // Sort requests by width descending (First Fit Decreasing)
-    const sortedRequests = [...requests].sort((a, b) => b.width - a.width);
-    
-    // Sort rolls by width descending
-    const sortedRolls = [...availableRolls].sort((a, b) => b.width - a.width);
-    
-    const patterns = [];
-    const remainingRequests = [...sortedRequests];
+  /**
+   * Handle multi-roll optimization for requests that don't fit in single roll
+   * Following the algorithm: if W+Q>X, find second bobina M with width(M)>=W+Q
+   */
+  handleMultiRollOptimization(pattern, availableRolls, requests) {
+    for (const multiRollCut of pattern.multiRollCuts) {
+      const request = multiRollCut.request;
+      
+      // Check if this is a length collage case (width fits, but length doesn't)
+      if (request.width <= pattern.roll.width && request.length > pattern.roll.length) {
+        // This can be handled with length collage
+        this.attemptLengthCollageForRequest(request, availableRolls, pattern.roll);
+      } else if (request.width > pattern.roll.width) {
+        // Find a roll that can accommodate this request's width
+        const suitableRoll = availableRolls.find(roll => 
+          roll.id !== pattern.roll.id && 
+          roll.width >= request.width && 
+          roll.length >= request.length
+        );
 
-    for (const roll of sortedRolls) {
-      if (remainingRequests.length === 0) break;
-
-      const pattern = this.createPattern(roll, []);
-      let remainingWidth = roll.width;
-
-      // First Fit: place first request that fits
-      for (let i = 0; i < remainingRequests.length; i++) {
-        const request = remainingRequests[i];
-        
-        if (request.width <= remainingWidth) {
-          pattern.cuts.push({
-            request: request,
-            width: request.width,
-            length: request.length
-          });
-          
-          remainingWidth -= request.width;
-          remainingRequests.splice(i, 1);
-          i--; // Adjust index after removal
-        }
-      }
-
-      if (pattern.cuts.length > 0) {
-        pattern.waste = remainingWidth;
-        pattern.usedArea = pattern.cuts.reduce((sum, cut) => sum + (cut.width * cut.length), 0);
-        pattern.efficiency = (pattern.usedArea / (roll.width * roll.length)) * 100;
-        patterns.push(pattern);
-      }
-    }
-
-    return patterns;
-  }
-
-  bestFitDecreasing(availableRolls, requests) {
-    // Sort requests by width descending
-    const sortedRequests = [...requests].sort((a, b) => b.width - a.width);
-    
-    // Sort rolls by width descending
-    const sortedRolls = [...availableRolls].sort((a, b) => b.width - a.width);
-    
-    const patterns = [];
-    const remainingRequests = [...sortedRequests];
-
-    for (const roll of sortedRolls) {
-      if (remainingRequests.length === 0) break;
-
-      const pattern = this.createPattern(roll, []);
-      let remainingWidth = roll.width;
-
-      // Best Fit: find the request that leaves the least waste
-      while (remainingWidth > 0 && remainingRequests.length > 0) {
-        let bestFitIndex = -1;
-        let bestFitWaste = Infinity;
-
-        for (let i = 0; i < remainingRequests.length; i++) {
-          const request = remainingRequests[i];
-          
-          if (request.width <= remainingWidth) {
-            const waste = remainingWidth - request.width;
-            if (waste < bestFitWaste) {
-              bestFitWaste = waste;
-              bestFitIndex = i;
-            }
+        if (suitableRoll) {
+          // Create a new pattern for this roll
+          const newPattern = this.createCuttingPattern(suitableRoll, [request]);
+          if (newPattern.cuts.length > 0) {
+            console.log(`Multi-roll cut: ${request.orderNumber} moved to roll ${suitableRoll.code}`);
           }
-        }
-
-        if (bestFitIndex !== -1) {
-          const request = remainingRequests[bestFitIndex];
-          
-          pattern.cuts.push({
-            request: request,
-            width: request.width,
-            length: request.length
-          });
-          
-          remainingWidth -= request.width;
-          remainingRequests.splice(bestFitIndex, 1);
         } else {
-          break; // No more fitting requests
+          console.log(`Cannot fulfill request ${request.orderNumber}: no suitable roll available`);
         }
       }
+    }
+  }
 
-      if (pattern.cuts.length > 0) {
-        pattern.waste = remainingWidth;
-        pattern.usedArea = pattern.cuts.reduce((sum, cut) => sum + (cut.width * cut.length), 0);
-        pattern.efficiency = (pattern.usedArea / (roll.width * roll.length)) * 100;
-        patterns.push(pattern);
+  /**
+   * Attempt to fulfill a request using length collage
+   * This combines multiple rolls to fulfill a single request that's too long for one roll
+   */
+  attemptLengthCollageForRequest(request, availableRolls, currentRoll) {
+    // Find rolls that can accommodate this request's width
+    const suitableRolls = availableRolls.filter(roll => 
+      roll.width >= request.width && 
+      roll.id !== currentRoll.id // Don't use the current roll
+    );
+
+    if (suitableRolls.length === 0) {
+      console.log(`Cannot fulfill request ${request.orderNumber}: no suitable rolls for length collage`);
+      return;
+    }
+
+    // Sort by length (descending) to use longer rolls first
+    suitableRolls.sort((a, b) => b.length - a.length);
+
+    let remainingLength = request.length;
+    const collageRolls = [];
+
+    // Try to fulfill the request by combining multiple rolls
+    for (const roll of suitableRolls) {
+      if (remainingLength <= 0) break;
+
+      const cutLength = Math.min(remainingLength, roll.length);
+      collageRolls.push({ roll, cutLength });
+      remainingLength -= cutLength;
+    }
+
+    if (remainingLength <= 0) {
+      // Successfully can create length collage
+      console.log(`Length collage possible for ${request.orderNumber}: using ${collageRolls.length} rolls`);
+      // Note: The actual collage patterns would be created in the main optimization loop
+    } else {
+      console.log(`Cannot fulfill request ${request.orderNumber}: insufficient total length. Still need ${remainingLength}m`);
+    }
+  }
+
+  /**
+   * Attempt to fulfill remaining requests using length collage
+   * This is called after all individual roll processing is complete
+   */
+  attemptLengthCollageForRemainingRequests(remainingRequests, availableRolls, patterns) {
+    console.log('=== Attempting Length Collage ===');
+    console.log('Remaining requests:', remainingRequests.filter(req => req.quantity > 0));
+    console.log('Available rolls:', availableRolls.map(roll => ({ code: roll.code, width: roll.width, length: roll.length })));
+    
+    for (const request of remainingRequests) {
+      if (request.quantity <= 0) continue;
+      
+      console.log(`Processing request: ${request.orderNumber} - ${request.width}mm × ${request.length}m`);
+      
+      // Check if this request can be fulfilled with length collage
+      if (request.width <= Math.max(...availableRolls.map(roll => roll.width))) {
+        console.log(`Request width ${request.width}mm fits in available rolls`);
+        const collageResult = this.createLengthCollage(request, availableRolls, patterns);
+        console.log('Collage result:', collageResult);
+        
+        if (collageResult.success) {
+          request.quantity -= 1;
+          console.log(`Length collage successful for ${request.orderNumber}`);
+        } else {
+          console.log(`Length collage failed for ${request.orderNumber}: ${collageResult.reason}`);
+        }
+      } else {
+        console.log(`Request width ${request.width}mm too wide for available rolls`);
+      }
+    }
+  }
+
+  /**
+   * Create a length collage pattern using multiple rolls
+   */
+  createLengthCollage(request, availableRolls, patterns) {
+    console.log(`Creating length collage for ${request.orderNumber}: ${request.width}mm × ${request.length}m`);
+    
+    // Find rolls that can accommodate this request's width and are not already used for actual cuts
+    const suitableRolls = availableRolls.filter(roll => 
+      roll.width >= request.width && 
+      !patterns.some(pattern => pattern.roll.id === roll.id && pattern.cuts.length > 0) // Only exclude rolls with actual cuts
+    );
+
+    console.log('Suitable rolls for collage:', suitableRolls.map(roll => ({ code: roll.code, width: roll.width, length: roll.length })));
+    console.log('Used rolls (with cuts):', patterns.filter(p => p.cuts.length > 0).map(p => p.roll.code));
+
+    if (suitableRolls.length === 0) {
+      console.log('No suitable rolls available for collage');
+      return { success: false, reason: 'No suitable rolls available' };
+    }
+
+    // Sort by length (descending) to use longer rolls first
+    suitableRolls.sort((a, b) => b.length - a.length);
+
+    let remainingLength = request.length;
+    const collagePatterns = [];
+
+    console.log(`Starting collage with ${remainingLength}m to fulfill`);
+
+    for (const roll of suitableRolls) {
+      if (remainingLength <= 0) break;
+
+      const cutLength = Math.min(remainingLength, roll.length);
+      console.log(`Using roll ${roll.code}: cutting ${cutLength}m (remaining: ${remainingLength - cutLength}m)`);
+      
+      // Create a pattern for this roll
+      const pattern = {
+        roll: roll,
+        cuts: [{
+          request: request,
+          width: request.width,
+          length: cutLength,
+          position: { x: 0, y: 0 },
+          rollId: roll.id,
+          isCollage: true,
+          collageIndex: collagePatterns.length
+        }],
+        waste: 0,
+        usedArea: request.width * cutLength * 1000,
+        efficiency: 0,
+        remainingPieces: [],
+        multiRollCuts: [],
+        isLengthCollage: true,
+        totalCollageLength: request.length
+      };
+
+      // Calculate waste and efficiency for this collage piece
+      this.calculateWasteAndRemainingPieces(pattern);
+      
+      collagePatterns.push(pattern);
+      remainingLength -= cutLength;
+    }
+
+    console.log(`Collage complete. Remaining length: ${remainingLength}m`);
+
+    if (remainingLength <= 0) {
+      // Successfully created collage
+      console.log(`Adding ${collagePatterns.length} collage patterns to results`);
+      patterns.push(...collagePatterns);
+      return { success: true, patterns: collagePatterns };
+    } else {
+      return { success: false, reason: `Insufficient total length. Still need ${remainingLength}m` };
+    }
+  }
+
+  /**
+   * Create cutting pattern following the client's algorithm sketch
+   * Case study: Roll P (width X, length Y) for rectangles A (W×L) and B (Q×H)
+   */
+  createCuttingPattern(roll, availableRequests) {
+    console.log(`Creating cutting pattern for roll ${roll.code}: ${roll.width}mm × ${roll.length}m`);
+    
+    const pattern = {
+      roll: roll,
+      cuts: [],
+      waste: 0,
+      usedArea: 0,
+      efficiency: 0,
+      remainingPieces: [],
+      multiRollCuts: [] // For cuts that span multiple rolls
+    };
+
+    // Filter requests that can fit in this roll's width
+    const fittingRequests = availableRequests.filter(req => 
+      req.quantity > 0 && req.width <= roll.width
+    );
+
+    console.log(`Fitting requests for roll ${roll.code}:`, fittingRequests.map(req => ({ order: req.orderNumber, width: req.width, length: req.length, qty: req.quantity })));
+
+    if (fittingRequests.length === 0) {
+      console.log(`No fitting requests for roll ${roll.code}`);
+      return pattern; // No cuts possible
+    }
+
+    // Sort by priority and width (descending)
+    const sortedRequests = this.sortRequestsByPriority(fittingRequests);
+
+    // Process requests following the algorithm sketch
+    for (const request of sortedRequests) {
+      if (request.quantity <= 0) continue;
+
+      console.log(`Processing request ${request.orderNumber}: ${request.width}mm × ${request.length}m`);
+
+      // Check if this request fits in the current roll
+      const canFitInCurrentRoll = this.canFitInRoll(roll, request, pattern.cuts);
+      console.log(`Can fit in current roll:`, canFitInCurrentRoll);
+      
+      if (canFitInCurrentRoll.fits) {
+        // Add cut to current roll
+        console.log(`Adding cut to pattern for ${request.orderNumber}`);
+        this.addCutToPattern(pattern, request, canFitInCurrentRoll);
+        request.quantity -= 1;
+      } else {
+        // Check if we need multiple rolls for this request
+        if (canFitInCurrentRoll.needsMultipleRolls) {
+          console.log(`Adding to multi-roll cuts for ${request.orderNumber}`);
+          this.handleMultiRollCut(pattern, request, availableRequests);
+        }
+        // If it doesn't fit at all, skip this request
       }
     }
 
-    return patterns;
+    // Calculate waste and remaining pieces following the sketch
+    this.calculateWasteAndRemainingPieces(pattern);
+
+    console.log(`Final pattern for roll ${roll.code}: ${pattern.cuts.length} cuts, ${pattern.multiRollCuts.length} multi-roll cuts`);
+    return pattern;
   }
 
-  countUnfulfilledRequests(patterns, originalRequests) {
-    const fulfilledRequestIds = new Set();
-    
-    patterns.forEach(pattern => {
-      pattern.cuts.forEach(cut => {
-        fulfilledRequestIds.add(cut.request.id);
-      });
-    });
+  /**
+   * Check if a request can fit in the current roll
+   * CRITICAL CONSTRAINT: Can only collage in length, NOT in width
+   * Each cut must fit entirely within the roll's width
+   */
+  canFitInRoll(roll, request, existingCuts) {
+    // CRITICAL: Each individual request must fit in the roll's width
+    // No width collage allowed - each piece must be ≤ roll.width
+    if (request.width > roll.width) {
+      return { 
+        fits: false, 
+        needsMultipleRolls: true,
+        reason: `Request width (${request.width}mm) exceeds roll width (${roll.width}mm)`
+      };
+    }
 
-    return originalRequests.filter(req => !fulfilledRequestIds.has(req.id)).length;
+    // Check if request fits in roll length
+    if (request.length > roll.length) {
+      return { 
+        fits: false, 
+        needsMultipleRolls: true,
+        reason: `Request length (${request.length}m) exceeds roll length (${roll.length}m)`
+      };
+    }
+
+    // Calculate total width used by existing cuts
+    const usedWidth = existingCuts.reduce((sum, cut) => sum + cut.width, 0);
+    const remainingWidth = roll.width - usedWidth;
+
+    // Check if request fits in remaining width
+    if (request.width > remainingWidth) {
+      return { 
+        fits: false, 
+        needsMultipleRolls: false, // Can't fit in this roll, but might fit in another
+        reason: `Insufficient remaining width (${remainingWidth}mm) for request (${request.width}mm)`
+      };
+    }
+
+    // Check if we can fit this request alongside existing cuts
+    const maxLengthNeeded = Math.max(
+      request.length,
+      ...existingCuts.map(cut => cut.length)
+    );
+
+    if (maxLengthNeeded > roll.length) {
+      return { 
+        fits: false, 
+        needsMultipleRolls: false,
+        reason: `Insufficient length (${roll.length}m) for combined cuts (${maxLengthNeeded}m)`
+      };
+    }
+
+    return { 
+      fits: true, 
+      needsMultipleRolls: false,
+      position: { x: usedWidth, y: 0 },
+      maxLength: maxLengthNeeded
+    };
+  }
+
+  /**
+   * Add a cut to the pattern
+   */
+  addCutToPattern(pattern, request, fitInfo) {
+    const cut = {
+      request: request,
+      width: request.width,
+      length: request.length,
+      position: fitInfo.position,
+      rollId: pattern.roll.id
+    };
+
+    pattern.cuts.push(cut);
+  }
+
+  /**
+   * Handle cuts that need multiple rolls
+   * CRITICAL: Can only collage in length, NOT in width
+   * Each individual request must fit in a single roll's width
+   */
+  handleMultiRollCut(pattern, request, allRequests) {
+    // CRITICAL CONSTRAINT: No width collage allowed
+    // Each request must fit entirely within one roll's width
+    
+    let reason = '';
+    let needsAdditionalRolls = false;
+    
+    if (request.width > pattern.roll.width) {
+      reason = `Request width (${request.width}mm) exceeds roll width (${pattern.roll.width}mm) - needs wider roll`;
+      needsAdditionalRolls = true;
+    } else if (request.length > pattern.roll.length) {
+      reason = `Request length (${request.length}m) exceeds roll length (${pattern.roll.length}m) - needs longer roll or length collage`;
+      needsAdditionalRolls = true;
+    } else {
+      reason = `Insufficient space in current roll for request ${request.orderNumber}`;
+      needsAdditionalRolls = false;
+    }
+
+    pattern.multiRollCuts.push({
+      request: request,
+      reason: reason,
+      requiredWidth: request.width,
+      requiredLength: request.length,
+      availableWidth: pattern.roll.width,
+      availableLength: pattern.roll.length,
+      needsAdditionalRolls: needsAdditionalRolls,
+      canCollageInLength: request.width <= pattern.roll.width && request.length > pattern.roll.length
+    });
+  }
+
+  /**
+   * Get the reason why a multi-roll cut is needed
+   */
+  getMultiRollReason(request, roll, totalRequiredWidth, maxRequiredLength) {
+    if (request.width > roll.width) {
+      return `Request width (${request.width}mm) exceeds roll width (${roll.width}mm)`;
+    }
+    if (request.length > roll.length) {
+      return `Request length (${request.length}m) exceeds roll length (${roll.length}m)`;
+    }
+    if (totalRequiredWidth > roll.width) {
+      return `Total required width (${totalRequiredWidth}mm) exceeds roll width (${roll.width}mm)`;
+    }
+    if (maxRequiredLength > roll.length) {
+      return `Maximum required length (${maxRequiredLength}m) exceeds roll length (${roll.length}m)`;
+    }
+    return 'Insufficient space in current roll';
+  }
+
+  /**
+   * Calculate waste and remaining pieces following the algorithm sketch
+   * CRITICAL CONSTRAINT: Can only collage in length, NOT in width
+   * Each cut must fit entirely within the roll's width
+   */
+  calculateWasteAndRemainingPieces(pattern) {
+    if (pattern.cuts.length === 0) {
+      pattern.waste = pattern.roll.width * pattern.roll.length * 1000; // Full roll is waste
+      pattern.efficiency = 0;
+      return;
+    }
+
+    // Calculate total width used (sum of all cuts in width direction)
+    const totalUsedWidth = pattern.cuts.reduce((sum, cut) => sum + cut.width, 0);
+    const maxLengthUsed = Math.max(...pattern.cuts.map(cut => cut.length));
+
+    // Calculate remaining width
+    const remainingWidth = pattern.roll.width - totalUsedWidth;
+
+    // Following the algorithm sketch with width constraint:
+    if (totalUsedWidth === pattern.roll.width) {
+      // IF W+Q=X then finisce li - no waste in width
+      pattern.waste = 0;
+    } else if (totalUsedWidth < pattern.roll.width) {
+      // elif W+Q<X devo visualizzare rettangolo G larga X-W-Q
+      // This remaining piece goes back to stock (not waste)
+      const remainingPiece = {
+          type: 'remaining_stock',
+          width: remainingWidth,
+        length: maxLengthUsed,
+        description: `Rettangolo G: larga ${remainingWidth}mm, lunga ${maxLengthUsed}m (ritorna a magazzino)`
+      };
+      pattern.remainingPieces.push(remainingPiece);
+      pattern.waste = 0; // Not waste, goes back to stock
+    }
+
+    // Check length waste - this is where we can have remaining pieces
+    const remainingLength = pattern.roll.length - maxLengthUsed;
+    if (remainingLength > 0) {
+      // If there's remaining length, it goes back to stock
+      const lengthRemainingPiece = {
+          type: 'remaining_stock',
+        width: pattern.roll.width,
+        length: remainingLength,
+        description: `Rettangolo Z: larga ${pattern.roll.width}mm, lunga ${remainingLength}m (ritorna a magazzino)`
+      };
+      pattern.remainingPieces.push(lengthRemainingPiece);
+    }
+
+    // Calculate efficiency based on actual cuts made
+    pattern.usedArea = pattern.cuts.reduce((sum, cut) => sum + (cut.width * cut.length * 1000), 0);
+    const totalArea = pattern.roll.width * pattern.roll.length * 1000;
+    pattern.efficiency = totalArea > 0 ? (pattern.usedArea / totalArea) * 100 : 0;
   }
 }
 

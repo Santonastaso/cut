@@ -1,4 +1,4 @@
-import { calculateEfficiency, calculateWaste } from '../utils/calculations';
+import { calculateEfficiency, calculateWaste } from '../utils/calculations.js';
 
 /**
  * Base class for cutting optimization algorithms

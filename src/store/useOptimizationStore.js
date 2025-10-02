@@ -3,33 +3,8 @@ import { create } from 'zustand'
 export const useOptimizationStore = create((set, get) => ({
   optimizationResult: null,
   algorithmResults: {},
-  currentAlgorithm: 'bidimensional',
-  algorithmSettings: {
-    multi: {
-      weights: {
-        waste: 0.4,
-        priority: 0.4,
-        rolls: 0.2
-      }
-    },
-    priority: {
-      priorityWeights: {
-        high: 10,
-        normal: 5,
-        low: 1
-      },
-      strictMode: true
-    },
-    rollMin: {
-      wasteLimit: 0.3,
-      allowPartialRolls: true
-    },
-    columnGen: {
-      maxIterations: 20,
-      maxPatterns: 100,
-      tolerance: 0.001
-    }
-  },
+  currentAlgorithm: 'waste-optimization',
+  algorithmSettings: {},
   isLoading: false,
   loadingMessage: '',
 
@@ -37,7 +12,7 @@ export const useOptimizationStore = create((set, get) => ({
     try {
       const { OptimizationService } = await import('../services/optimizationService');
       const savedResult = await OptimizationService.saveResult({
-        algorithmType: result.algorithmType || 'bidimensional',
+        algorithmType: result.algorithmType || 'waste-optimization',
         settings: result.settings || {},
         statistics: result.statistics,
         cuttingPlans: result.cuttingPlans

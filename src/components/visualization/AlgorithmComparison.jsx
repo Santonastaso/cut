@@ -6,12 +6,7 @@ export default function AlgorithmComparison({ comparison, currentAlgorithm }) {
   if (!comparison) return null;
 
   const algorithmNames = {
-    'bidimensional': 'Combinazione Lunghezze',
-    'waste-min': 'Minimizzazione Sfrido',
-    'priority': 'Priorità Ordini',
-    'roll-min': 'Minimizzazione Bobine',
-    'multi': 'Multi-obiettivo',
-    'column-gen': 'Generazione Colonne'
+    'waste-optimization': 'Ottimizzazione Sfridi'
   };
 
   const currentResult = comparison.algorithmResults[currentAlgorithm];

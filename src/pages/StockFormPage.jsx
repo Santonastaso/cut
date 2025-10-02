@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui';
 import { useStockStore, useMaterialsStore } from '../store';
 import { validateStockRoll, isStockCodeDuplicate } from '../utils/validation';
+import { calculateWeight } from '../utils/calculations';
 
 export default function StockFormPage() {
   const { id } = useParams();
@@ -14,7 +15,7 @@ export default function StockFormPage() {
   const [editingItem, setEditingItem] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   
-  const { register, handleSubmit, reset, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, control, formState: { errors }, watch } = useForm();
 
   // Fetch data for editing if ID is provided
   useEffect(() => {
@@ -60,8 +61,12 @@ export default function StockFormPage() {
     }
 
     try {
+      // Calculate weight based on material specific weight, width, and length
+      const weight = calculateWeight(material.specificWeight, data.width, data.length);
+      
       const rollData = {
         ...data,
+        weight: weight,
         specificWeight: material.specificWeight,
         batch: data.batch || `2024/${Math.floor(Math.random() * 900) + 100}`
       };
@@ -131,18 +136,25 @@ export default function StockFormPage() {
             
             <div className="space-y-2">
               <Label htmlFor="material">Materiale *</Label>
-              <Select {...register('material', { required: true })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleziona materiale" />
-                </SelectTrigger>
-                <SelectContent>
-                  {getMaterialsForSelect().map((material) => (
-                    <SelectItem key={material.value} value={material.value}>
-                      {material.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                name="material"
+                control={control}
+                rules={{ required: true }}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleziona materiale" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getMaterialsForSelect().map((material) => (
+                        <SelectItem key={material.value} value={material.value}>
+                          {material.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
               {errors.material && <p className="text-sm text-red-600">Materiale obbligatorio</p>}
             </div>
             
@@ -176,6 +188,25 @@ export default function StockFormPage() {
                 placeholder="Es. 2024/03/001"
                 {...register('batch')}
               />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="weight">Peso (kg)</Label>
+              <Input
+                id="weight"
+                type="number"
+                step="0.01"
+                placeholder="Calcolato automaticamente"
+                readOnly
+                value={watch('material') && watch('width') && watch('length') ? 
+                  calculateWeight(
+                    materials.find(m => m.code === watch('material'))?.specificWeight || 0,
+                    watch('width') || 0,
+                    watch('length') || 0
+                  ).toFixed(2) : ''
+                }
+              />
+              <p className="text-xs text-gray-500">Calcolato automaticamente in base a materiale, larghezza e lunghezza</p>
             </div>
             
             <div className="md:col-span-3 flex space-x-2">
