@@ -58,7 +58,7 @@ function SideNav() {
       <div className="p-3 border-b border-navy-700">
         <Link to="/" className="flex items-center justify-center">
           <img 
-            src="/logo.svg" 
+            src="/cut/logo.svg" 
             alt="Flexi Logo" 
             className="h-8 w-auto"
           />
