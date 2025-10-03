@@ -52,8 +52,8 @@ const AppLayout = () => {
       
       // Add logo (top left)
       try {
-        // Try to load the PNG logo as base64
-        const logoResponse = await fetch('/logo.png');
+        // Try to load the PNG logo as base64 with correct base path
+        const logoResponse = await fetch('/cut/logo.png');
         const logoBlob = await logoResponse.blob();
         const logoBase64 = await new Promise((resolve) => {
           const reader = new FileReader();
