@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Checkbox, Input } from '../components/ui';
 import { AllocationView, RollView } from '../components/visualization';
+import DataTable from '../components/DataTable';
 import { useOptimizationStore, useStockStore, useRequestsStore } from '../store';
 import { getAlgorithm, ALGORITHMS } from '../algorithms';
 
@@ -17,7 +18,7 @@ export default function OptimizationPage() {
   
   const { stockRolls } = useStockStore();
   const { cutRequests } = useRequestsStore();
-  const [activeTab, setActiveTab] = useState('allocation');
+  const [activeTab, setActiveTab] = useState('table');
   
   // Request selection state
   const [selectedRequests, setSelectedRequests] = useState(new Set());
@@ -137,15 +138,15 @@ export default function OptimizationPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-8">
       {/* Request Selection */}
       <Card>
-        <CardHeader>
-          <CardTitle>Selezione Richieste</CardTitle>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xl">Selezione Richieste</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           {/* Filters */}
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
             <Input
               placeholder="Cerca ODP o materiale..."
               value={searchTerm}
@@ -153,34 +154,36 @@ export default function OptimizationPage() {
               className="flex-1"
             />
             
-            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tutte le priorità</SelectItem>
-                <SelectItem value="high">Alta</SelectItem>
-                <SelectItem value="normal">Normale</SelectItem>
-                <SelectItem value="low">Bassa</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Select value={materialFilter} onValueChange={setMaterialFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tutti i materiali</SelectItem>
-                {uniqueMaterials.map(material => (
-                  <SelectItem key={material} value={material}>{material}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-3">
+              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tutte le priorità</SelectItem>
+                  <SelectItem value="high">Alta</SelectItem>
+                  <SelectItem value="normal">Normale</SelectItem>
+                  <SelectItem value="low">Bassa</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={materialFilter} onValueChange={setMaterialFilter}>
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tutti i materiali</SelectItem>
+                  {uniqueMaterials.map(material => (
+                    <SelectItem key={material} value={material}>{material}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Selection Controls */}
-          <div className="flex justify-between items-center">
-            <div className="text-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="text-sm font-medium text-gray-700">
               {selectedRequests.size} di {filteredRequests.length} selezionate
             </div>
             <div className="flex gap-2">
@@ -194,21 +197,21 @@ export default function OptimizationPage() {
           </div>
 
           {/* Request List */}
-          <div className="border rounded-lg max-h-64 overflow-y-auto">
+          <div className="border rounded-lg max-h-80 overflow-y-auto">
             {filteredRequests.map(request => (
-              <div key={request.id} className="flex items-center p-3 border-b last:border-b-0">
+              <div key={request.id} className="flex items-center p-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors">
                 <Checkbox
                   checked={selectedRequests.has(request.id)}
                   onCheckedChange={() => handleRequestToggle(request.id)}
-                  className="mr-3"
+                  className="mr-4"
                 />
-                <div className="flex-1">
-                  <div className="font-medium">{request.orderNumber}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-900 mb-1">{request.orderNumber}</div>
                   <div className="text-sm text-gray-600">
                     {request.material} - {request.width}×{request.length} - Qty: {request.quantity}
                   </div>
                 </div>
-                <span className={`px-2 py-1 rounded text-xs ${getPriorityBadgeClass(request.priority)}`}>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPriorityBadgeClass(request.priority)}`}>
                   {formatPriority(request.priority)}
                 </span>
               </div>
@@ -219,17 +222,17 @@ export default function OptimizationPage() {
 
       {/* Algorithm Selection */}
       <Card>
-        <CardHeader>
-          <CardTitle>Algoritmo di Ottimizzazione</CardTitle>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xl">Algoritmo di Ottimizzazione</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="flex gap-4 items-end">
-            <div className="flex-1">
-              <label className="block text-sm font-medium mb-2">
+        <CardContent className="space-y-6">
+          <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-end">
+            <div className="flex-1 space-y-3">
+              <label className="block text-sm font-semibold text-gray-700">
                 Seleziona Algoritmo
               </label>
               <Select value={currentAlgorithm} onValueChange={handleAlgorithmChange}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -240,14 +243,15 @@ export default function OptimizationPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-gray-600 leading-relaxed">
                 {ALGORITHMS[currentAlgorithm]?.description}
               </p>
             </div>
             <Button 
               onClick={handleOptimize} 
               disabled={isLoading || selectedRequests.size === 0}
-              className="h-10"
+              size="lg"
+              className="w-full lg:w-auto"
             >
               {isLoading ? 'Ottimizzazione...' : 'Ottimizza'}
             </Button>
@@ -260,92 +264,143 @@ export default function OptimizationPage() {
         <div className="space-y-6">
           {/* Simple Cutting Results Table */}
           <Card>
-            <CardHeader>
-              <CardTitle>Piano di Taglio</CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl">Piano di Taglio</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b-2 border-gray-300">
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Bobina</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Materiale</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Tipo</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Pezzo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {optimizationResult.cuttingPlans.map((materialPlan) => 
-                      materialPlan.patterns.map((pattern, index) => {
-                        const allPieces = [];
-                        
-                        // Add cut pieces as "Product"
-                        pattern.cuts.forEach((cut, cutIndex) => {
-                          allPieces.push({
-                            type: 'Product',
-                            piece: `${cut.request.orderNumber} - ${cut.width}mm × ${cut.length}m`,
-                            color: 'text-blue-600'
-                          });
+              <DataTable
+                data={(() => {
+                  const tableData = [];
+                  optimizationResult.cuttingPlans.forEach((materialPlan) => {
+                    materialPlan.patterns.forEach((pattern, index) => {
+                      const allPieces = [];
+                      
+                      // Add cut pieces as "Product"
+                      pattern.cuts.forEach((cut, cutIndex) => {
+                        allPieces.push({
+                          id: `${materialPlan.material}-${index}-${cutIndex}`,
+                          bobina: pattern.roll.code,
+                          materiale: materialPlan.material,
+                          tipo: 'Product',
+                          pezzo: `${cut.request.orderNumber} - ${cut.width}mm × ${cut.length}m`
                         });
-                        
-                        // Add remaining pieces as "Back to Storage"
-                        pattern.remainingPieces.forEach((piece, pieceIndex) => {
-                          allPieces.push({
-                            type: 'Back to Storage',
-                            piece: `${piece.width}mm × ${piece.length}m`,
-                            color: 'text-green-600'
-                          });
+                      });
+                      
+                      // Add remaining pieces as "Back to Storage"
+                      pattern.remainingPieces.forEach((piece, pieceIndex) => {
+                        allPieces.push({
+                          id: `${materialPlan.material}-${index}-remaining-${pieceIndex}`,
+                          bobina: pattern.roll.code,
+                          materiale: materialPlan.material,
+                          tipo: 'Back to Storage',
+                          pezzo: `${piece.width}mm × ${piece.length}m`
                         });
-                        
-                        // If no pieces at all, show empty row
-                        if (allPieces.length === 0) {
-                          return (
-                            <tr key={`${materialPlan.material}-${index}`} className="border-b border-gray-200 hover:bg-gray-50">
-                              <td className="py-3 px-4 font-medium text-gray-900">
-                                {pattern.roll.code}
-                              </td>
-                              <td className="py-3 px-4 text-gray-600">
-                                {materialPlan.material}
-                              </td>
-                              <td className="py-3 px-4">
-                                <span className="text-gray-400 italic">-</span>
-                              </td>
-                              <td className="py-3 px-4">
-                                <span className="text-gray-400 italic">Nessun pezzo</span>
-                              </td>
-                            </tr>
-                          );
-                        }
-                        
-                        // Render each piece as a separate row
-                        return allPieces.map((item, pieceIndex) => (
-                          <tr key={`${materialPlan.material}-${index}-${pieceIndex}`} className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="py-3 px-4 font-medium text-gray-900">
-                              {pieceIndex === 0 ? pattern.roll.code : ''}
-                            </td>
-                            <td className="py-3 px-4 text-gray-600">
-                              {pieceIndex === 0 ? materialPlan.material : ''}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                item.type === 'Product' 
-                                  ? 'bg-blue-100 text-blue-800' 
-                                  : 'bg-green-100 text-green-800'
-                              }`}>
-                                {item.type}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className={`font-semibold ${item.color}`}>
-                                {item.piece}
-                              </span>
-                            </td>
-                          </tr>
-                        ));
-                      })
-                    )}
-                  </tbody>
-                </table>
+                      });
+                      
+                      tableData.push(...allPieces);
+                    });
+                  });
+                  return tableData;
+                })()}
+                columns={[
+                  {
+                    accessorKey: 'bobina',
+                    header: 'Bobina',
+                  },
+                  {
+                    accessorKey: 'materiale',
+                    header: 'Materiale',
+                  },
+                  {
+                    accessorKey: 'tipo',
+                    header: 'Tipo',
+                    cell: ({ getValue }) => {
+                      const tipo = getValue();
+                      return (
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                          tipo === 'Product' 
+                            ? 'bg-gray-100 text-gray-800' 
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {tipo}
+                        </span>
+                      );
+                    }
+                  },
+                  {
+                    accessorKey: 'pezzo',
+                    header: 'Pezzo',
+                  }
+                ]}
+                enableFiltering={false}
+                enableGlobalSearch={false}
+                enableColumnVisibility={false}
+                initialPageSize={25}
+              />
+            </CardContent>
+          </Card>
+
+          {/* 2D Cuts Visualization */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl">Visualizzazione Tagli</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {optimizationResult.cuttingPlans.map((materialPlan, materialIndex) => (
+                  <div key={materialIndex} className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      Materiale: {materialPlan.material}
+                    </h3>
+                    <div className="space-y-4">
+                      {materialPlan.patterns.map((pattern, patternIndex) => (
+                        <div key={patternIndex} className="border rounded-lg p-4 bg-gray-50">
+                          <div className="mb-3">
+                            <h4 className="font-medium text-gray-700">
+                              Bobina: {pattern.roll.code} ({pattern.roll.width}mm × {pattern.roll.length}m)
+                            </h4>
+                          </div>
+                          <div className="relative bg-white border rounded p-4" style={{ minHeight: '200px' }}>
+                            {/* Roll outline */}
+                            <div 
+                              className="absolute border-2 border-gray-400 bg-gray-100"
+                              style={{
+                                width: '100%',
+                                height: '200px',
+                                maxWidth: '600px'
+                              }}
+                            >
+                              {/* Cuts visualization */}
+                              {pattern.cuts.map((cut, cutIndex) => {
+                                const scale = 600 / pattern.roll.width; // Scale width to fit in 600px
+                                const width = cut.width * scale;
+                                const height = (cut.length / pattern.roll.length) * 200; // Scale height proportionally
+                                
+                                return (
+                                  <div
+                                    key={cutIndex}
+                                    className="absolute border border-blue-500 bg-blue-200 flex items-center justify-center text-xs font-medium"
+                                    style={{
+                                      left: `${(cut.position?.x || 0) * scale}px`,
+                                      top: `${(cut.position?.y || 0) * (200 / pattern.roll.length)}px`,
+                                      width: `${width}px`,
+                                      height: `${height}px`,
+                                      minWidth: '20px',
+                                      minHeight: '20px'
+                                    }}
+                                    title={`${cut.request.orderNumber}: ${cut.width}mm × ${cut.length}m`}
+                                  >
+                                    {cut.request.orderNumber}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

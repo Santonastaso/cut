@@ -57,7 +57,11 @@ function SideNav() {
       {/* Logo */}
       <div className="p-3 border-b border-navy-700">
         <Link to="/" className="flex items-center justify-center">
-          <div className="text-white font-bold text-lg">OptiCUT Pro</div>
+          <img 
+            src="/logo.svg" 
+            alt="Flexi Logo" 
+            className="h-8 w-auto"
+          />
         </Link>
       </div>
 
