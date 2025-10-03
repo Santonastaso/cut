@@ -258,61 +258,95 @@ export default function OptimizationPage() {
       {/* Results */}
       {optimizationResult && (
         <div className="space-y-6">
-          {/* Summary */}
+          {/* Simple Cutting Results Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Risultati Ottimizzazione</CardTitle>
+              <CardTitle>Piano di Taglio</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="text-center p-4 border rounded">
-                  <div className="text-2xl font-bold">
-                    {optimizationResult.statistics.efficiency}%
-                  </div>
-                  <div className="text-sm">Efficienza</div>
-                </div>
-                <div className="text-center p-4 border rounded">
-                  <div className="text-2xl font-bold">
-                    {optimizationResult.statistics.totalWaste}m²
-                  </div>
-                  <div className="text-sm">Sfrido Totale</div>
-                </div>
-                <div className="text-center p-4 border rounded">
-                  <div className="text-2xl font-bold">
-                    {optimizationResult.statistics.rollsUsed}/{optimizationResult.statistics.totalRolls}
-                  </div>
-                  <div className="text-sm">Bobine Utilizzate</div>
-                </div>
-                <div className="text-center p-4 border rounded">
-                  <div className="text-2xl font-bold">
-                    {optimizationResult.statistics.fulfilledRequests}/{optimizationResult.statistics.totalRequests}
-                  </div>
-                  <div className="text-sm">Richieste Soddisfatte</div>
-                </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-gray-300">
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Bobina</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Materiale</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Tipo</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Pezzo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {optimizationResult.cuttingPlans.map((materialPlan) => 
+                      materialPlan.patterns.map((pattern, index) => {
+                        const allPieces = [];
+                        
+                        // Add cut pieces as "Product"
+                        pattern.cuts.forEach((cut, cutIndex) => {
+                          allPieces.push({
+                            type: 'Product',
+                            piece: `${cut.request.orderNumber} - ${cut.width}mm × ${cut.length}m`,
+                            color: 'text-blue-600'
+                          });
+                        });
+                        
+                        // Add remaining pieces as "Back to Storage"
+                        pattern.remainingPieces.forEach((piece, pieceIndex) => {
+                          allPieces.push({
+                            type: 'Back to Storage',
+                            piece: `${piece.width}mm × ${piece.length}m`,
+                            color: 'text-green-600'
+                          });
+                        });
+                        
+                        // If no pieces at all, show empty row
+                        if (allPieces.length === 0) {
+                          return (
+                            <tr key={`${materialPlan.material}-${index}`} className="border-b border-gray-200 hover:bg-gray-50">
+                              <td className="py-3 px-4 font-medium text-gray-900">
+                                {pattern.roll.code}
+                              </td>
+                              <td className="py-3 px-4 text-gray-600">
+                                {materialPlan.material}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="text-gray-400 italic">-</span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="text-gray-400 italic">Nessun pezzo</span>
+                              </td>
+                            </tr>
+                          );
+                        }
+                        
+                        // Render each piece as a separate row
+                        return allPieces.map((item, pieceIndex) => (
+                          <tr key={`${materialPlan.material}-${index}-${pieceIndex}`} className="border-b border-gray-200 hover:bg-gray-50">
+                            <td className="py-3 px-4 font-medium text-gray-900">
+                              {pieceIndex === 0 ? pattern.roll.code : ''}
+                            </td>
+                            <td className="py-3 px-4 text-gray-600">
+                              {pieceIndex === 0 ? materialPlan.material : ''}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                item.type === 'Product' 
+                                  ? 'bg-blue-100 text-blue-800' 
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {item.type}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`font-semibold ${item.color}`}>
+                                {item.piece}
+                              </span>
+                            </td>
+                          </tr>
+                        ));
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Detailed Results */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Analisi Dettagliata</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="allocation">Allocazione per Richiesta</TabsTrigger>
-                  <TabsTrigger value="rolls">Vista Bobine</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="allocation" className="mt-4">
-                  <AllocationView result={optimizationResult} />
-                </TabsContent>
-                
-                <TabsContent value="rolls" className="mt-4">
-                  <RollView result={optimizationResult} />
-                </TabsContent>
-              </Tabs>
             </CardContent>
           </Card>
         </div>
