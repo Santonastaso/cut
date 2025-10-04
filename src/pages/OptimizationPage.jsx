@@ -359,6 +359,11 @@ export default function OptimizationPage() {
                             <h4 className="font-medium text-gray-700">
                               Bobina: {pattern.roll.code} ({pattern.roll.width}mm × {pattern.roll.length}m)
                             </h4>
+                            <div className="text-sm text-gray-600 mt-1">
+                              Tagli: {pattern.cuts.length} | 
+                              Larghezza totale utilizzata: {pattern.cuts.reduce((sum, cut) => sum + cut.width, 0)}mm / {pattern.roll.width}mm | 
+                              Efficienza: {pattern.efficiency.toFixed(1)}%
+                            </div>
                           </div>
                           <div className="relative bg-white border rounded p-4" style={{ minHeight: '200px' }}>
                             {/* Roll outline */}
@@ -371,29 +376,50 @@ export default function OptimizationPage() {
                               }}
                             >
                               {/* Cuts visualization */}
-                              {pattern.cuts.map((cut, cutIndex) => {
+                              {(() => {
                                 const scale = 600 / pattern.roll.width; // Scale width to fit in 600px
-                                const width = cut.width * scale;
-                                const height = (cut.length / pattern.roll.length) * 200; // Scale height proportionally
+                                let currentX = 0; // Track current X position for proper layout
                                 
-                                return (
-                                  <div
-                                    key={cutIndex}
-                                    className="absolute border border-blue-500 bg-blue-200 flex items-center justify-center text-xs font-medium"
-                                    style={{
-                                      left: `${(cut.position?.x || 0) * scale}px`,
-                                      top: `${(cut.position?.y || 0) * (200 / pattern.roll.length)}px`,
-                                      width: `${width}px`,
-                                      height: `${height}px`,
-                                      minWidth: '20px',
-                                      minHeight: '20px'
-                                    }}
-                                    title={`${cut.request.orderNumber}: ${cut.width}mm × ${cut.length}m`}
-                                  >
-                                    {cut.request.orderNumber}
-                                  </div>
-                                );
-                              })}
+                                return pattern.cuts.map((cut, cutIndex) => {
+                                  const width = cut.width * scale;
+                                  const height = (cut.length / pattern.roll.length) * 200; // Scale height proportionally
+                                  
+                                  // Use calculated position or fallback to sequential positioning
+                                  const leftPosition = cut.position?.x !== undefined ? 
+                                    cut.position.x * scale : 
+                                    currentX;
+                                  
+                                  // Update currentX for next cut (sequential positioning)
+                                  currentX += width;
+                                  
+                                  // Validate that cut fits within roll width
+                                  const totalWidth = currentX;
+                                  const isValidLayout = totalWidth <= 600; // 600px is our scaled roll width
+                                  
+                                  return (
+                                    <div
+                                      key={cutIndex}
+                                      className={`absolute border-2 flex items-center justify-center text-xs font-medium ${
+                                        isValidLayout ? 'border-blue-500 bg-blue-200' : 'border-red-500 bg-red-200'
+                                      }`}
+                                      style={{
+                                        left: `${leftPosition}px`,
+                                        top: `${(cut.position?.y || 0) * (200 / pattern.roll.length)}px`,
+                                        width: `${width}px`,
+                                        height: `${height}px`,
+                                        minWidth: '20px',
+                                        minHeight: '20px'
+                                      }}
+                                      title={`${cut.request.orderNumber}: ${cut.width}mm × ${cut.length}m${!isValidLayout ? ' (WIDTH OVERFLOW!)' : ''}`}
+                                    >
+                                      <div className="text-center">
+                                        <div className="font-bold">{cut.request.orderNumber}</div>
+                                        <div className="text-xs opacity-75">{cut.width}mm</div>
+                                      </div>
+                                    </div>
+                                  );
+                                });
+                              })()}
                             </div>
                           </div>
                         </div>
