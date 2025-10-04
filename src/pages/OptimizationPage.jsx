@@ -340,6 +340,56 @@ export default function OptimizationPage() {
             </CardContent>
           </Card>
 
+          {/* Requests Summary (between cuts table and visuals) */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl">Riepilogo Richieste</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DataTable
+                data={(optimizationResult.requestsSummary || []).map((r, idx) => ({
+                  id: r.id || idx,
+                  ordine: r.orderNumber,
+                  materiale: r.material,
+                  dimensione: `${r.width}mm × ${r.unitLength}m` ,
+                  qty: r.quantity,
+                  tagliEseguiti: `${(r.totalCutLength ?? 0)}m`,
+                  richiesti: `${(r.requiredLength ?? 0)}m`,
+                  soddisfatti: `${r.unitsFulfilled ?? 0}/${r.quantity}`,
+                  stato: r.fullyFulfilled ? 'Completata' : 'Parziale',
+                  bobine: (r.rollsUsed || []).map(x => `${x.rollCode} (${x.totalLength}m)`).join(', ')
+                }))}
+                columns={[
+                  { accessorKey: 'ordine', header: 'ODP' },
+                  { accessorKey: 'materiale', header: 'Materiale' },
+                  { accessorKey: 'dimensione', header: 'Dimensione' },
+                  { accessorKey: 'qty', header: 'Qty' },
+                  { accessorKey: 'tagliEseguiti', header: 'Tagli Totali' },
+                  { accessorKey: 'richiesti', header: 'Richiesti' },
+                  { accessorKey: 'soddisfatti', header: 'Unità Soddisfatte' },
+                  {
+                    accessorKey: 'stato',
+                    header: 'Stato',
+                    cell: ({ getValue }) => {
+                      const v = getValue();
+                      const ok = v === 'Completata';
+                      return (
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${ok ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                          {v}
+                        </span>
+                      );
+                    }
+                  },
+                  { accessorKey: 'bobine', header: 'Bobine Utilizzate' },
+                ]}
+                enableFiltering={false}
+                enableGlobalSearch={false}
+                enableColumnVisibility={false}
+                initialPageSize={10}
+              />
+            </CardContent>
+          </Card>
+
           {/* 2D Cuts Visualization */}
           <Card>
             <CardHeader className="pb-4">
