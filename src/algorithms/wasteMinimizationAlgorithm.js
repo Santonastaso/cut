@@ -32,6 +32,7 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
     // Group requests by material type
     const requestsByMaterial = this.groupRequestsByMaterial(cutRequests);
     const cuttingPlans = [];
+    const globalRequestsSummary = [];
     let totalWaste = 0;
     let totalEfficiency = 0;
     let usedRolls = 0;
@@ -53,6 +54,10 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
         totalEfficiency += parseFloat(materialResult.statistics.efficiency) * materialResult.patterns.length;
         usedRolls += materialResult.patterns.length;
         totalFulfilledRequests += materialResult.statistics.fulfilledRequests;
+        // Collect per-request summaries
+        if (materialResult.requestsSummary) {
+          globalRequestsSummary.push(...materialResult.requestsSummary);
+        }
         
         console.log(`Material ${material}: ${materialResult.statistics.fulfilledRequests} fulfilled requests`);
       }
@@ -68,6 +73,7 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
 
     return {
       cuttingPlans,
+      requestsSummary: globalRequestsSummary,
       statistics: {
         efficiency: planEfficiency.toFixed(2),
         totalWaste: totalWaste.toFixed(2),
@@ -82,6 +88,15 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
   optimizeMaterial(availableRolls, materialRequests) {
     // Sort requests by priority and width (descending)
     const sortedRequests = this.sortRequestsByPriority([...materialRequests]);
+    // Preserve originals for accurate fulfillment accounting later
+    const originalById = new Map(sortedRequests.map(r => [r.id, {
+      id: r.id,
+      orderNumber: r.orderNumber,
+      width: r.width,
+      length: r.length,
+      quantity: r.quantity,
+      material: r.material
+    }]));
     
     // Sort rolls by width (descending) to use larger rolls first
     const sortedRolls = this.sortRollsByWidth([...availableRolls]);
@@ -108,11 +123,10 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
       // Only add patterns with actual cuts to results
       if (pattern.cuts.length > 0) {
         patterns.push(pattern);
-        // Count unique requests fulfilled, not individual cuts
+        // Track which requests have been cut at least once (used later); do NOT count fulfillment here
         pattern.cuts.forEach(cut => {
           if (!fulfilledRequestIds.has(cut.request.id)) {
             fulfilledRequestIds.add(cut.request.id);
-            totalFulfilledRequests += 1;
           }
         });
       }
@@ -126,8 +140,46 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
     // After processing all rolls, try to fulfill remaining requests with length collage
     this.attemptLengthCollageForRemainingRequests(sortedRequests, sortedRolls, patterns, fulfilledRequestIds);
 
-    // Recalculate total fulfilled requests after length collage (count unique requests, not cuts)
-    totalFulfilledRequests = fulfilledRequestIds.size;
+    // Build per-request cut aggregation
+    const cutLengthByRequest = new Map();
+    const rollsByRequest = new Map();
+    for (const pattern of patterns) {
+      for (const cut of pattern.cuts) {
+        const reqId = cut.request.id;
+        cutLengthByRequest.set(reqId, (cutLengthByRequest.get(reqId) || 0) + (cut.length || 0));
+        if (!rollsByRequest.has(reqId)) rollsByRequest.set(reqId, new Map());
+        const map = rollsByRequest.get(reqId);
+        map.set(pattern.roll.code, (map.get(pattern.roll.code) || 0) + (cut.length || 0));
+      }
+    }
+
+    // Create per-request recap and compute fulfilled count based on total required length
+    const requestsSummary = [];
+    for (const [reqId, info] of originalById.entries()) {
+      const totalCut = cutLengthByRequest.get(reqId) || 0;
+      const required = (info.length || 0) * (info.quantity || 0);
+      const unitsFulfilled = info.length > 0 ? Math.floor(totalCut / info.length) : 0;
+      const fullyFulfilled = required > 0 ? totalCut >= required : totalCut > 0;
+      if (fullyFulfilled) totalFulfilledRequests += 1;
+      const perRoll = [];
+      const rollMap = rollsByRequest.get(reqId) || new Map();
+      for (const [code, len] of rollMap.entries()) {
+        perRoll.push({ rollCode: code, totalLength: len });
+      }
+      requestsSummary.push({
+        id: reqId,
+        orderNumber: info.orderNumber,
+        material: info.material,
+        width: info.width,
+        unitLength: info.length,
+        quantity: info.quantity,
+        totalCutLength: totalCut,
+        requiredLength: required,
+        unitsFulfilled,
+        fullyFulfilled,
+        rollsUsed: perRoll
+      });
+    }
 
     // Collect unfulfilled requests
     unfulfilledRequests = sortedRequests.filter(req => req.quantity > 0);
@@ -143,6 +195,7 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
       material: availableRolls[0].material,
       patterns,
       unfulfilledRequests,
+      requestsSummary,
       statistics: {
         efficiency: efficiency.toFixed(2),
         totalWaste: (totalWaste / 1000000).toFixed(2), // Convert mm² to m²
