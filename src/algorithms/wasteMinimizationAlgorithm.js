@@ -304,31 +304,25 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
         return true;
       }
       
-      // Roll has cuts, check if there's remaining length available
-      // FIXED: Calculate remaining length more accurately
-      const maxLengthUsed = Math.max(...existingPattern.cuts.map(cut => cut.length));
-      const remainingLength = roll.length - maxLengthUsed;
-      
-      // Also check if we can add a new cut alongside existing ones
-      // (since cuts can be parallel with different lengths)
+      // Roll has cuts, check if we can add a new cut alongside existing ones
+      // FIXED: For parallel cuts, we can always use the full length
+      // The key constraint is width, not length
       const totalWidthUsed = existingPattern.cuts.reduce((sum, cut) => sum + cut.width, 0);
       const remainingWidth = roll.width - totalWidthUsed;
       
-      // Can use this roll if either:
-      // 1. There's remaining length available, OR
-      // 2. There's remaining width available (for parallel cuts)
-      return remainingLength > 0 || remainingWidth >= request.width;
+      // Can use this roll if there's remaining width available for parallel cuts
+      return remainingWidth >= request.width;
     });
 
     console.log('Suitable rolls for collage:', suitableRolls.map(roll => {
       const existingPattern = patterns.find(pattern => pattern.roll.id === roll.id);
-      const maxLengthUsed = existingPattern ? Math.max(...existingPattern.cuts.map(cut => cut.length)) : 0;
-      const remainingLength = roll.length - maxLengthUsed;
+      const totalWidthUsed = existingPattern ? existingPattern.cuts.reduce((sum, cut) => sum + cut.width, 0) : 0;
+      const remainingWidth = roll.width - totalWidthUsed;
       return { 
         code: roll.code, 
         width: roll.width, 
         length: roll.length,
-        remainingLength: remainingLength,
+        remainingWidth: remainingWidth,
         hasCuts: existingPattern && existingPattern.cuts.length > 0
       };
     }));
@@ -357,14 +351,15 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
       
       if (existingPattern && existingPattern.cuts.length > 0) {
         // Roll has existing cuts, calculate remaining length and position
-        const maxLengthUsed = Math.max(...existingPattern.cuts.map(cut => cut.length));
-        availableLength = roll.length - maxLengthUsed;
+        // FIXED: For parallel cuts, we can use the full roll length since cuts don't interfere in length
+        // Each cut can use the full length of the roll independently
+        availableLength = roll.length;
         
         // Calculate position for parallel cut (alongside existing cuts)
         const totalWidthUsed = existingPattern.cuts.reduce((sum, cut) => sum + cut.width, 0);
         cutPosition = { x: totalWidthUsed, y: 0 };
         
-        console.log(`Roll ${roll.code} has existing cuts, available length: ${availableLength}m, position: x=${cutPosition.x}`);
+        console.log(`Roll ${roll.code} has existing cuts, available length: ${availableLength}m (full length for parallel cuts), position: x=${cutPosition.x}`);
       }
 
       const cutLength = Math.min(remainingLength, availableLength);
