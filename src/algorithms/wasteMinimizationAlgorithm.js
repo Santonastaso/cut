@@ -305,9 +305,19 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
       }
       
       // Roll has cuts, check if there's remaining length available
+      // FIXED: Calculate remaining length more accurately
       const maxLengthUsed = Math.max(...existingPattern.cuts.map(cut => cut.length));
       const remainingLength = roll.length - maxLengthUsed;
-      return remainingLength > 0;
+      
+      // Also check if we can add a new cut alongside existing ones
+      // (since cuts can be parallel with different lengths)
+      const totalWidthUsed = existingPattern.cuts.reduce((sum, cut) => sum + cut.width, 0);
+      const remainingWidth = roll.width - totalWidthUsed;
+      
+      // Can use this roll if either:
+      // 1. There's remaining length available, OR
+      // 2. There's remaining width available (for parallel cuts)
+      return remainingLength > 0 || remainingWidth >= request.width;
     });
 
     console.log('Suitable rolls for collage:', suitableRolls.map(roll => {
@@ -343,12 +353,18 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
       // Check if this roll already has cuts
       const existingPattern = patterns.find(pattern => pattern.roll.id === roll.id);
       let availableLength = roll.length;
+      let cutPosition = { x: 0, y: 0 };
       
       if (existingPattern && existingPattern.cuts.length > 0) {
-        // Roll has existing cuts, calculate remaining length
+        // Roll has existing cuts, calculate remaining length and position
         const maxLengthUsed = Math.max(...existingPattern.cuts.map(cut => cut.length));
         availableLength = roll.length - maxLengthUsed;
-        console.log(`Roll ${roll.code} has existing cuts, available length: ${availableLength}m`);
+        
+        // Calculate position for parallel cut (alongside existing cuts)
+        const totalWidthUsed = existingPattern.cuts.reduce((sum, cut) => sum + cut.width, 0);
+        cutPosition = { x: totalWidthUsed, y: 0 };
+        
+        console.log(`Roll ${roll.code} has existing cuts, available length: ${availableLength}m, position: x=${cutPosition.x}`);
       }
 
       const cutLength = Math.min(remainingLength, availableLength);
@@ -356,31 +372,54 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
       
       if (cutLength <= 0) continue; // Skip if no length available
       
-      // Create a pattern for this roll
-      const pattern = {
-        roll: roll,
-        cuts: [{
+      // Check if we need to create a new pattern or add to existing one
+      if (existingPattern && existingPattern.cuts.length > 0) {
+        // Add to existing pattern
+        const newCut = {
           request: request,
           width: request.width,
           length: cutLength,
-          position: { x: 0, y: 0 },
+          position: cutPosition,
           rollId: roll.id,
           isCollage: true,
           collageIndex: collagePatterns.length
-        }],
-        waste: 0,
-        usedArea: request.width * cutLength * 1000,
-        efficiency: 0,
-        remainingPieces: [],
-        multiRollCuts: [],
-        isLengthCollage: true,
-        totalCollageLength: request.length
-      };
+        };
+        
+        existingPattern.cuts.push(newCut);
+        existingPattern.usedArea += request.width * cutLength * 1000;
+        
+        // Recalculate waste and efficiency for the updated pattern
+        this.calculateWasteAndRemainingPieces(existingPattern);
+        
+        console.log(`Added collage cut to existing pattern for roll ${roll.code}`);
+      } else {
+        // Create a new pattern for this roll
+        const pattern = {
+          roll: roll,
+          cuts: [{
+            request: request,
+            width: request.width,
+            length: cutLength,
+            position: cutPosition,
+            rollId: roll.id,
+            isCollage: true,
+            collageIndex: collagePatterns.length
+          }],
+          waste: 0,
+          usedArea: request.width * cutLength * 1000,
+          efficiency: 0,
+          remainingPieces: [],
+          multiRollCuts: [],
+          isLengthCollage: true,
+          totalCollageLength: request.length
+        };
 
-      // Calculate waste and efficiency for this collage piece
-      this.calculateWasteAndRemainingPieces(pattern);
+        // Calculate waste and efficiency for this collage piece
+        this.calculateWasteAndRemainingPieces(pattern);
+        
+        collagePatterns.push(pattern);
+      }
       
-      collagePatterns.push(pattern);
       remainingLength -= cutLength;
     }
 
@@ -388,7 +427,8 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
 
     if (remainingLength <= 0) {
       // Successfully created collage
-      console.log(`Adding ${collagePatterns.length} collage patterns to results`);
+      console.log(`Adding ${collagePatterns.length} new collage patterns to results`);
+      // Only add new patterns (not existing ones that were modified)
       patterns.push(...collagePatterns);
       
       // Mark the request as fulfilled (this will be handled by the calling method)
