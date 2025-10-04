@@ -524,8 +524,21 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
       };
     }
 
+    // Calculate total width used by existing cuts
+    const usedWidth = existingCuts.reduce((sum, cut) => sum + cut.width, 0);
+    const remainingWidth = roll.width - usedWidth;
+
+    // Check if request fits in remaining width (must be validated BEFORE length checks)
+    if (request.width > remainingWidth) {
+      return { 
+        fits: false, 
+        needsMultipleRolls: false, // Can't fit in this roll, but might fit in another
+        reason: `Insufficient remaining width (${remainingWidth}mm) for request (${request.width}mm)`
+      };
+    }
+
     // Check if request fits in roll length
-    // NEW: Allow cutting shorter length than requested if it fits in the roll
+    // Allow cutting shorter length than requested if only length is limiting factor
     if (request.length > roll.length) {
       // We can still cut this request, but with a shorter length
       // This will be handled as a partial cut that can be completed with length collage
@@ -534,20 +547,8 @@ export class WasteMinimizationAlgorithm extends BaseAlgorithm {
         needsMultipleRolls: true, // Still needs multiple rolls for full length
         reason: `Request length (${request.length}m) exceeds roll length (${roll.length}m), but can cut ${roll.length}m`,
         partialCut: true,
-        cutLength: roll.length
-      };
-    }
-
-    // Calculate total width used by existing cuts
-    const usedWidth = existingCuts.reduce((sum, cut) => sum + cut.width, 0);
-    const remainingWidth = roll.width - usedWidth;
-
-    // Check if request fits in remaining width
-    if (request.width > remainingWidth) {
-      return { 
-        fits: false, 
-        needsMultipleRolls: false, // Can't fit in this roll, but might fit in another
-        reason: `Insufficient remaining width (${remainingWidth}mm) for request (${request.width}mm)`
+        cutLength: roll.length,
+        position: { x: usedWidth, y: 0 }
       };
     }
 
